@@ -1,0 +1,407 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+
+		<meta name="author" content="uwplse">
+		<meta name="keywords" content="compilers,domain specific languages,program synthesis,program analysis">
+		
+		<title>Metalift</title>
+		<meta name="description" content="Framework for building DSL compilers">
+
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+
+		<!-- Latest compiled and minified CSS --> 
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+
+		<!-- Latest compiled and minified JavaScript -->
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-83551104-2"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments)};
+      gtag('js', new Date());
+
+      gtag('config', 'UA-83551104-2');
+    </script>
+        
+		<style>
+			.label {
+		    	padding: .2em 0.6em .2em;
+			}
+			.container{
+				max-width: 730px;
+			}
+
+			.content{
+				float: left;
+				max-width: 730px;
+				width: 100%;
+			}
+
+			p{
+				font-size: 16px;
+				text-align: justify;
+			}
+
+			h1{
+				font-size: 56px;
+				margin-bottom: 0px;
+				font-weight: bold;
+				color: #337ab7;
+			}
+
+			.subtitle{
+				font-size: 24px;
+				color: #666;
+				margin-bottom: 20px;
+			}
+
+			h2{
+				font-size: 24px;
+				color: #666;
+				margin-top: 18px;
+			}
+
+			.person {
+			    margin: 10px;
+			    width: 110px;
+			    height: 140px;
+			    float: left;
+			}
+
+			.person:hover{
+				transition: opacity .1s;
+    			opacity: 0.7;
+			}
+
+			.person img{
+				height: 100%;
+			    width: 100%;
+			    border-radius: 6px;
+			    object-fit: cover;
+			    object-position: center
+			}
+
+			.person p{
+				text-align: center;
+			    font-size: 1em;
+			    font-weight: bold;
+			    color: white;
+			    position: relative;
+			    text-shadow: 1px 1px 2px black;
+			    padding-bottom: 4px;
+			    bottom: 25px;
+			    display: table-cell;
+			    vertical-align: bottom;
+			    width: 110px;
+			}
+
+            a.disabled-link:hover{
+                cursor: default;
+                text-decoration: none;
+                color: #337ab7;            
+            }
+		</style>
+	</head>
+
+	<body>
+		<div class="container">
+      		<div class="content">
+  				<h1>MetaLift</h1>
+  				<p class="subtitle">Leveraging DSLs made easy</p>
+  				<p>
+  					MetaLift is a framework for building compilers for domain-specific 
+            languages (DSLs). If you are a developer and you want to use a new DSL 
+            for your application, you would need to rewrite your code manually, which 
+            is often tedious and error-prone. Rather than doing that, you can use 
+            MetaLift to <em>generate a compiler</em> that translates from your source language
+            to your favorite DSL!
+  				</p>
+
+          <h2>How does it work?</h2>
+          <p>
+          MetaLift is a compiler generator. Unlike traditional syntax-driven compilers, which
+          consists of rules that recognize patterns in the input code and translate them
+          into the target language, MetaLift uses 
+          <a href="https://homes.cs.washington.edu/~akcheung/papers/pldi16.html">verified lifting</a> to search for 
+          possible candidate programs in the target language that the given input can be 
+          translated to. This frees 
+          you from the need to devise, check, and maintain those pesky syntax-driven rules!
+          </p>
+          <p>
+          To make the search efficient, 
+          rather than searching programs that are expressible in the concrete syntax of the target DSL, 
+          MetaLift searches over the space of programs expressed in a high-level 
+          <em>specification language</em> instead. The specification language has a functional
+          language-like syntax (think Haskell) and represents the semantics of the 
+          target DSL. See <a href="#specLang">below</a> for details.      
+          </p> 
+          
+          <p>
+          The MetaLift toolchain consists of three components, as shown below:
+          </p>
+          
+          <img src="arch.png" width=100%>
+          
+          <p>
+          First, the input code is parsed into an abstract syntax tree (AST), with each
+          node in the tree representing some part of the input program (e.g., a statement, 
+          an expression, etc). After that, MetaLift extracts code fragments from
+          the input AST that are amenable for translation to the target DSL.
+          Note that we are not aiming to do whole program transformations here. Given 
+          the target being a <em>domain-specific</em> language, it is likely that only 
+          parts of the input application is expressible using the DSL. You probably
+          don't want to translate the entire application anyway: consider moving computation
+          to the GPU for instance. You probably only want to move the most computationally
+          intensive kernels to the GPU, and leave the rest of your application to remain 
+          on the CPU.
+          </p> 
+
+          <p>
+          MetaLift currently has a parser for input programs written in Java, 
+          and we will expand to other
+          general-purpose languages (C, Python) in the near future.
+          </p>
+
+          <p>
+          Each extracted code fragment is then passed to a program synthesizer
+          (we currently use the <a href="https://bitbucket.org/gatoatigrado/sketch-frontend/wiki/Home">Sketch</a> 
+          synthesizer) 
+          which searches over the space of programs expressed in the specification 
+          language. If a candidate program can be proven to be semantically equivalent
+          to the input (this is currently done using 
+          the <a href="https://z3.codeplex.com/">Z3</a> theorem prover), it is then passed over to the code 
+          generator. Otherwise, we ask the synthesizer to find another candidate 
+          until we run out of programs or it times out.
+          </p>
+
+          <p>
+          Each successfully verified candidate program is then processed by the 
+          code generator, which translates the candidate program into the concrete
+          syntax of the DSL. The resulting DSL program is then "stitched" back into 
+          the original code, with glue code generated to call the generated DSL program as needed.
+          This is illustrated in the diagram above.
+          </p> 
+          
+          <a name="specLang"></a>
+          <h2>How do I use it?</h2>
+          
+          <p>
+          We are still working on the details of the system, but 
+          conceptually MetaLift takes in three inputs to generate a compiler:
+          </p>
+            
+          <p></p>
+           
+          <table>
+          <tr>
+          <td><img src="target.png" width="150px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>What type of code fragment(s) should MetaLift attempt to translate?
+          This depends on the target DSL of interest. For instance, we want to target 
+          loops over arrays if we want to move code to GPUs.
+          </td>
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+          <tr>
+          <td><img src="semantics.png" width="150px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>Define the semantics of the DSL that you like to translate to, using the 
+          MetaLift specification language. 
+          </td>
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+          <tr>
+          <td><img src="codegen.png" width="150px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>For each of the DSL constructs defined earlier, tell MetaLift how to 
+          generate the concrete syntax of the DSL.
+          </td>
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+
+          </table>
+          
+          </p>
+
+          <a name="examples"></a>
+          <h2>What have been built using this?</h2>
+          <p>
+          Verified lifting has been the underlying technology used to build the
+          following compilers:
+          </p>
+          <table>
+          <tr>
+          <td><img src="dexter.png" width="100px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><a href="http://dexter.uwplse.org">Dexter</a> is a compiler that translates 
+              image processing kernels from C to <a href="https://halide-lang.org/">Halide</a>.</td> 
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+
+
+          <tr>
+          <td><img src="casper.svg" width="100px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><a href="http://casper.uwplse.org">Casper</a> is a compiler that translates 
+              sequential Java to <a href="https://spark.apache.org/">Spark</a> 
+              and <a href="https://hadoop.apache.org">Hadoop</a>.</td>
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+          <tr>
+          <td><img src="stng.png" width="100px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><a href="http://stng.uwplse.org">STNG</a> is a compiler that enables Fortran
+              kernels to leverage GPUs by compiling them into the 
+              <a href="http://halide-lang.org/">Halide</a> DSL.
+          </td>
+          </tr>
+          
+          <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          </tr>
+
+          <tr>
+          <td><img src="domino.png" width="100px"></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><a href="http://web.mit.edu/domino/">Domino</a> is a compiler for compiling 
+              packet transactions to be executed on programmable switches via the <a href="http://p4.org/">P4</a>
+              language.
+          </td>
+          </tr>
+         
+          </table>
+          
+           
+				<h2>Publications and Talks</h2>
+        
+        <ul>
+					<li>[Sept 19] <a href="http://dexter.uwplse.org/">Dexter</a>, a verified lifting-based compiler that translates C to Halide, 
+          will be presented at <a href="https://sa2019.siggraph.org">SIGGRAPH Asia</a> this 
+          year. We will be posting the demo website here shortly.</li>
+					
+          <li>[June 18] <a href="http://casper.uwplse.org">Casper</a> was presented at <a href="https://sigmod2018.org/">SIGMOD</a> this year. Be sure you check out the demo website.</li>
+
+          <li>[April 18] Thank you <a href="https://www.intel.com/content/www/us/en/research/intel-research.html">Intel Labs</a> for supporting our work!</li>
+
+					<li>[Sept 17] Check out <a href="https://www.thestrangeloop.com/2017/leveraging-dsls-almost-for-free.html">Alvin's talk</a> at StrangeLoop 2017! [<a href="strangeloop17.pdf">slides</a>]</li>
+				</ul>
+        
+        <p>
+        Please also check the <a href="#examples">links</a> above for further publications.
+        </p>
+
+        <h2>How do I learn more?</h2> 
+        <p>
+        MetaLift is under active development and will be released soon. 
+        If you are interested in joining development or like to keep up to date, please 
+        join our 
+        <a href="https://mailman.cs.washington.edu/mailman/listinfo/metalift-announce">announcements</a>
+        or 
+        <a href="https://mailman.cs.washington.edu/mailman/listinfo/metalift-dev">developers mailing lists</a>!
+        </p>
+ 
+  		  <h2>People</h2>
+        <p>
+        MetaLift is jointly developed by the folks at the University of Washington 
+        <a href="http://uwplse.org/">Programming Languages and Software Engineering Research Group</a>, 
+        <a href="https://research.adobe.com">Adobe Research</a>, and 
+        <a href="https://www.intel.com/content/www/us/en/research/people/intel-labs-people.html">Intel Labs</a>.
+        The following are the main developers of MetaLift:
+        </p>
+
+         <div class="person" title="Maaz Ahmad">
+				    <a href="http://homes.cs.washington.edu/~maazsaf/">
+				        <img src="maaz.jpg">
+				        <p>Maaz Ahmad</p>
+				    </a>
+				</div>
+	
+         <div class="person" title="Alvin Cheung">
+				    <a href="http://homes.cs.washington.edu/~akcheung/">
+				        <img src="alvin.jpg">
+				        <p>Alvin Cheung</p>
+				    </a>
+				</div>  				
+			
+        <div class="person" title="Shoaib Kamil">
+				    <a href="https://research.adobe.com/person/shoaib-kamil/">
+				        <img src="shoaib.jpg">
+				        <p>Shoaib Kamil</p>
+				    </a>
+				</div>
+
+        <div class="person" title="Remy Wang">
+				    <a href="http://txti.es/remy">
+				        <img src="remy.jpg">
+				        <p>Remy Wang</p>
+				    </a>
+				</div>
+        </div>
+         
+        <p>
+        We are grateful for our sponsors for their generous support of our work:
+        </p>
+
+        <div>
+        <table>
+        <tr>
+        <td><img width="100px" src="adobe.png"></td>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+        <td><img width="100px" src="intel.png"></td>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+        <td><img width="100px" src="darpa.jpeg"></td>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+        <td><img width="100px" src="doe.jpeg"></td>
+          <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+        <td><img width="100px" src="nsf.jpeg"></td>
+        </tr>
+        </table>
+
+        </div>
+
+        </div>
+	    </div>
+</body>
+</html>
